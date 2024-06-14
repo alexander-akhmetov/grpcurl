@@ -14,19 +14,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/dskit/grpcencoding/snappy"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/grpcreflect"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/alts"
+	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	// Register gzip compressor so compressed responses will work
-	_ "google.golang.org/grpc/encoding/gzip"
 	// Register xds so xds and xds-experimental resolver schemes work
 	_ "google.golang.org/grpc/xds"
 
@@ -164,7 +164,10 @@ var (
 		an error to use both -authority and -servername (though this will be
 		permitted if they are both set to the same value, to increase backwards
 		compatibility with earlier releases that allowed both to be set).`))
-	reflection = optionalBoolFlag{val: true}
+	reflection  = optionalBoolFlag{val: true}
+	compression = flags.String("compression", "", prettify(`
+		Compress the request using the specified algorithm. Supported values are: gzip, snappy.
+	`))
 )
 
 func init() {
@@ -480,6 +483,16 @@ func main() {
 			network = "unix"
 			if *authority == "" {
 				*authority = "localhost"
+			}
+		}
+		if *compression != "" {
+			switch *compression {
+			case "gzip":
+				opts = append(opts, grpc.WithDefaultCallOptions(grpc.UseCompressor(gzip.Name)))
+			case "snappy":
+				opts = append(opts, grpc.WithDefaultCallOptions(grpc.UseCompressor(snappy.Name)))
+			default:
+				fail(nil, "Unsupported compression algorithm: %s", compression)
 			}
 		}
 		var creds credentials.TransportCredentials
